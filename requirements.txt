@@ -1,17 +1,22 @@
-fastapi>=0.103.1
+fastapi>=0.115.8
 uvicorn>=0.23.2
 pydantic>=2.4.2
 python-dotenv>=1.0.0
-langchain>=0.0.335
-langchain-openai>=0.0.2.post1
-browser-use==0.1.47 # Requer anyio >= 4.9.0
+langchain~=0.3.0  # Trying a version potentially compatible with langchain-core==0.3.49
+langchain-core==0.3.49 # Pinned due to browser-use dependency
+langchain-openai>=0.0.2.post1 # Keep as is
+langchain-anthropic>=0.3.3 # Keep as is
+langchain-google-genai>=2.1.2 # Keep as is
+langchain-ollama>=0.3.0 # Keep as is
+browser-use==0.1.47 # Requires anyio >= 4.9.0 and langchain-core==0.3.49
 playwright>=1.38.0
 httpx>=0.25.0
 python-multipart>=0.0.6
 watchtower>=3.0.0
+# anyio will be resolved by pip based on browser-use and fastapi requirements
 
-# Tentativa de resolver conflito de anyio
-# anyio==3.7.1 # Para FastAPI e Langchain
-# anyio>=4.9.0 # Para browser-use. Se o browser-use for crítico, 
-#               FastAPI e Langchain precisarão ser atualizados para versões compatíveis com anyio >=4.9.0
-#               OU browser-use precisa de uma versão compatível com anyio < 4.0.0 
+# Tentativa de resolver conflito de anyio - REMOVIDO
+# anyio==3.7.1 # Para FastAPI e Langchain - REMOVIDO
+# anyio>=4.9.0 # Para browser-use. Se o browser-use for crítico, - REMOVIDO
+#               FastAPI e Langchain precisarão ser atualizados para versões compatíveis com anyio >=4.9.0 - REMOVIDO
+#               OU browser-use precisa de uma versão compatível com anyio < 4.0.0 - REMOVIDO 

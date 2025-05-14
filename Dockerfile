@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     procps \
     git \
+    xvfb \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -27,5 +28,5 @@ COPY . .
 # Expor a porta da API
 EXPOSE 8000
 
-# Executar a API
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"] 
+# Executar a API com xvfb-run de forma mais robusta
+CMD ["sh", "-c", "xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' uvicorn api:app --host 0.0.0.0 --port 8000 2>/dev/null || uvicorn api:app --host 0.0.0.0 --port 8000"] 
