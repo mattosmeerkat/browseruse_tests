@@ -1,4 +1,5 @@
-FROM python:3.10-slim
+# Python 3.11 é recomendado para browser-use
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -12,12 +13,13 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar Playwright (com chromium incluído)
-RUN pip install playwright && playwright install --with-deps
-
 # Copiar requirements.txt primeiro para aproveitar o cache de layers do Docker
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Instalar browsers para Playwright (Chromium neste caso)
+# O --no-shell é para evitar problemas em alguns ambientes Docker
+RUN playwright install chromium --with-deps --no-shell
 
 # Copiar o código da aplicação
 COPY . .
@@ -25,5 +27,5 @@ COPY . .
 # Expor a porta da API
 EXPOSE 8000
 
-# Executar a API (correção do path do módulo)
-CMD ["uvicorn", "browseruse_tests.api:app", "--host", "0.0.0.0", "--port", "8000"] 
+# Executar a API
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"] 

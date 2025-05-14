@@ -2,6 +2,39 @@
 
 API para execução de tarefas automatizadas de navegação web usando LLMs e browser automation.
 
+## Atualizações Recentes (Maio 2023)
+
+* **Correção de caminhos**: Ajustado o Dockerfile e script de execução para lidar corretamente com a estrutura do módulo
+* **Melhorias no tratamento de resultados**: Adicionado manejo seguro de diferentes tipos de retorno do agente
+* **Atualização do Watchtower**: Atualizado para versão >=3.0.0 para compatibilidade com parâmetros de configuração
+* **Instalação otimizada de Playwright**: Configuração do Dockerfile para uso eficiente do Playwright/Chromium
+* **Segurança aprimorada**: Remoção de chaves API expostas das configurações de exemplo
+* **Implementação da dependência browser-use**: Adicionada simulação do pacote para demonstração e testes
+
+## Nota sobre o pacote browser-use
+
+Este projeto depende do pacote `browser-use`, que é uma biblioteca personalizada para automação de navegadores com LLMs. Para um ambiente de produção completo, você deve:
+
+1. **Em desenvolvimento local**: 
+   - Clone o repositório do `browser-use` (se disponível publicamente)
+   - Instale-o em modo de desenvolvimento: `pip install -e /path/to/browser-use`
+   - Ou solicite acesso à equipe responsável
+
+2. **Em Docker (produção)**: 
+   - O Dockerfile inclui uma implementação simulada para fins de demonstração
+   - Para produção, você deve substituir a implementação simulada pela biblioteca real, modificando o Dockerfile:
+     ```dockerfile
+     # Remova as linhas de simulação e adicione a instalação correta
+     RUN pip install git+https://github.com/sua-org/browser-use.git
+     # OU: instale a partir de um servidor PyPI privado
+     # OU: adicione o código fonte como um submódulo git
+     ```
+
+3. **Funcionalidades esperadas do pacote**: A implementação deve fornecer:
+   - Classe `Agent` com método `__init__(task, llm)` 
+   - Método assíncrono `run()`
+   - Método `final_result()` que retorna o resultado formatado
+
 ## Requisitos
 
 - Python 3.8+
@@ -64,10 +97,57 @@ pip install -r requirements.txt
 
 2. Execute o servidor uvicorn:
 ```bash
+# Dentro do diretório browseruse_tests
 uvicorn api:app --reload --host 0.0.0.0 --port 8000
+
+# OU na raiz do projeto
+uvicorn browseruse_tests.api:app --reload --host 0.0.0.0 --port 8000
 ```
 
 A API estará disponível em `http://localhost:8000`. Você pode acessar a documentação interativa em `http://localhost:8000/docs`.
+
+## Guia de Deploy Rápido (Mínimo Funcional)
+
+Este guia oferece uma implantação mínima funcional, adequada para testes ou ambientes simples:
+
+1. **Preparação do ambiente:**
+   ```bash
+   # Clonar o repositório 
+   git clone [seu-repositorio] browser-use-api
+   cd browser-use-api
+   
+   # Configurar variáveis de ambiente
+   cp example.env .env
+   # Edite o arquivo .env para definir:
+   # - OPENAI_API_KEY=sua-chave-openai
+   # - API_KEY=sua-api-key-segura
+   # - ENVIRONMENT=production
+   ```
+
+2. **Implantação com Docker:**
+   ```bash
+   # Construir e iniciar o container
+   docker-compose up -d
+   
+   # Verificar logs
+   docker-compose logs -f
+   ```
+
+3. **Verificar a instalação:**
+   ```bash
+   # Testar endpoint de saúde
+   curl http://localhost:8000/health
+   # Deve retornar: {"status":"ok","environment":"production"}
+   ```
+
+4. **Exemplo de uso:**
+   ```bash
+   # Executar uma tarefa simples (substitua API_KEY pelo valor do seu .env)
+   curl -X POST http://localhost:8000/run_task \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer sua-api-key" \
+     -d '{"url": "https://www.gov.br/cvm/pt-br/pagina-inicial/", "task": "Extraia o título da página principal", "model": "gpt-4.1"}'
+   ```
 
 ## Implantação com Docker
 
@@ -139,7 +219,7 @@ Content-Type: application/json
 # Para produção (substitua pela sua API_KEY)
 curl -X POST "http://localhost:8000/run_task" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer MHBp3X8JfKw9yR2sTqZ5vC7bD6nG4mL1aE0xN" \
+  -H "Authorization: Bearer sua-api-key-segura" \
   -d '{
     "url": "https://www.gov.br/cvm/pt-br/pagina-inicial/",
     "task": "Acesse o site, clique em \"Assuntos\", depois em \"Notícias\". Extraia o título e data das 3 notícias mais recentes.",

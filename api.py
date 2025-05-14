@@ -95,7 +95,8 @@ API_KEYS = {}
 API_KEYS[DEFAULT_API_KEY] = "admin"
 
 # Suporte a chave de desenvolvimento local para testes
-if os.getenv("ENVIRONMENT", "production").lower() != "production":
+DEV_KEY = "123"  # Definindo a chave de teste
+if os.getenv("ENVIRONMENT", "development").lower() != "production":
     API_KEYS[DEV_KEY] = "developer"
     logger.info("Modo de desenvolvimento ativado. Chave de teste '123' habilitada.")
 

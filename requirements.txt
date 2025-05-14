@@ -4,8 +4,14 @@ pydantic>=2.4.2
 python-dotenv>=1.0.0
 langchain>=0.0.335
 langchain-openai>=0.0.2.post1
-browser-use>=0.1.0
+browser-use==0.1.47 # Requer anyio >= 4.9.0
 playwright>=1.38.0
 httpx>=0.25.0
 python-multipart>=0.0.6
-watchtower>=3.0.0 
+watchtower>=3.0.0
+
+# Tentativa de resolver conflito de anyio
+# anyio==3.7.1 # Para FastAPI e Langchain
+# anyio>=4.9.0 # Para browser-use. Se o browser-use for crítico, 
+#               FastAPI e Langchain precisarão ser atualizados para versões compatíveis com anyio >=4.9.0
+#               OU browser-use precisa de uma versão compatível com anyio < 4.0.0 
