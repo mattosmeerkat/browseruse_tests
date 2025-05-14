@@ -107,3 +107,6 @@
 2025-05-09 12:26:38,854 - browser-use-diag - DEBUG - {"task_id": "task_992c77cdf2b7b3cb", "timestamp": "2025-05-09T12:26:38.854633", "message": "Tentando parsear resultado como JSON", "extra_data": null}
 2025-05-09 12:26:38,854 - browser-use-diag - DEBUG - {"task_id": "task_992c77cdf2b7b3cb", "timestamp": "2025-05-09T12:26:38.854781", "message": "Parse JSON bem-sucedido", "extra_data": null}
 2025-05-09 12:26:38,854 - browser-use-diag - DEBUG - {"task_id": "task_992c77cdf2b7b3cb", "timestamp": "2025-05-09T12:26:38.854871", "message": "Resultado \u00e9 uma lista com 1 itens", "extra_data": null}
+2025-05-13 22:07:15,024 - browser-use-diag - INFO - Watchtower configurado para o logger de diagnóstico. Grupo: BrowserUseAPILogs, Stream: diag-logs
+2025-05-14 08:34:19,445 - browser-use-diag - INFO - Watchtower configurado para o logger de diagnóstico. Grupo: BrowserUseAPILogs, Stream: diag-logs
+2025-05-14 08:34:58,650 - browser-use-diag - INFO - Watchtower configurado para o logger de diagnóstico. Grupo: BrowserUseAPILogs, Stream: diag-logs

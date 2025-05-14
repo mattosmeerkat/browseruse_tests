@@ -16,27 +16,61 @@ from typing import Optional, Dict, Any, List, Union
 from dotenv import load_dotenv
 load_dotenv()
 
+# Importar watchtower para CloudWatch logging
+import watchtower
+
 # Configuração de logging avançada
 log_dir = "logs"
 os.makedirs(log_dir, exist_ok=True)
 
+# Obter nome do grupo de logs do ambiente, default para "BrowserUseAPI"
+LOG_GROUP_NAME = os.getenv("LOG_GROUP_NAME", "BrowserUseAPILogs")
+# Obter nome do stream de logs do ambiente, default para "api"
+LOG_STREAM_NAME_API = os.getenv("LOG_STREAM_NAME_API", "api-logs")
+LOG_STREAM_NAME_DIAG = os.getenv("LOG_STREAM_NAME_DIAG", "diag-logs")
+
 # Logger principal
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(f"{log_dir}/api.log"),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
 logger = logging.getLogger("browser-use-api")
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.addHandler(logging.FileHandler(f"{log_dir}/api.log"))
 
 # Logger específico para diagnóstico do browser_use
 diag_logger = logging.getLogger("browser-use-diag")
+diag_logger.setLevel(logging.DEBUG) # Mantido como DEBUG para logs detalhados
 diag_handler = logging.FileHandler(f"{log_dir}/browser_use_debug.log")
 diag_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 diag_logger.addHandler(diag_handler)
-diag_logger.setLevel(logging.DEBUG)
+
+# Configurar Watchtower se estiver em ambiente de produção e LOG_GROUP_NAME estiver definido
+if os.getenv("ENVIRONMENT", "development").lower() == "production" and LOG_GROUP_NAME:
+    try:
+        # Handler para o logger principal
+        cw_handler_api = watchtower.CloudWatchLogHandler(
+            log_group_name=LOG_GROUP_NAME,
+            log_stream_name=LOG_STREAM_NAME_API,
+            send_interval=60,  # Envia logs a cada 60 segundos
+            create_log_group=True
+        )
+        cw_handler_api.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(cw_handler_api)
+        logger.info(f"Watchtower configurado para o logger principal. Grupo: {LOG_GROUP_NAME}, Stream: {LOG_STREAM_NAME_API}")
+
+        # Handler para o logger de diagnóstico
+        cw_handler_diag = watchtower.CloudWatchLogHandler(
+            log_group_name=LOG_GROUP_NAME,
+            log_stream_name=LOG_STREAM_NAME_DIAG,
+            send_interval=60,
+            create_log_group=True # O grupo já deve ter sido criado acima, mas para garantir
+        )
+        cw_handler_diag.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        diag_logger.addHandler(cw_handler_diag)
+        diag_logger.info(f"Watchtower configurado para o logger de diagnóstico. Grupo: {LOG_GROUP_NAME}, Stream: {LOG_STREAM_NAME_DIAG}")
+
+    except Exception as e:
+        logger.error(f"Falha ao configurar Watchtower: {e}", exc_info=True)
+else:
+    logger.info("Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).")
 
 # Configuração da API
 app = FastAPI(
@@ -61,7 +95,6 @@ API_KEYS = {}
 API_KEYS[DEFAULT_API_KEY] = "admin"
 
 # Suporte a chave de desenvolvimento local para testes
-DEV_KEY = "123"
 if os.getenv("ENVIRONMENT", "production").lower() != "production":
     API_KEYS[DEV_KEY] = "developer"
     logger.info("Modo de desenvolvimento ativado. Chave de teste '123' habilitada.")
@@ -184,7 +217,20 @@ async def run_task(task_request: BrowserTask, user_role: str = Depends(verify_ap
             
             # Obter resultado final
             log_detailed_info(task_id, "Extraindo resultado final do agente", "DEBUG")
-            final_result = result.final_result()
+            
+            # Tratamento seguro para diferentes tipos de retorno
+            final_result = ""
+            if hasattr(result, "final_result"):
+                final_result = result.final_result()
+            elif isinstance(result, str):
+                final_result = result
+            else:
+                # Tentar converter para string caso seja outro tipo
+                try:
+                    final_result = str(result)
+                    log_detailed_info(task_id, "Resultado convertido para string", "WARNING")
+                except Exception as e:
+                    log_detailed_info(task_id, f"Erro ao converter resultado: {str(e)}", "ERROR")
             
             if final_result:
                 log_detailed_info(task_id, "Resultado final obtido", "DEBUG", 

@@ -311,19 +311,74 @@ Para implantação em Lambda, considere os seguintes ajustes:
 
 ## Logs e Monitoramento
 
-A API mantém logs detalhados no diretório `logs/api.log`, incluindo:
-- Tentativas de acesso com API keys inválidas
-- Início e conclusão de tarefas
-- Erros durante a execução
+A API mantém logs detalhados no diretório `logs/api.log` e `logs/browser_use_debug.log`. 
+Em um ambiente de produção na AWS, os logs são automaticamente enviados para o Amazon CloudWatch se as seguintes variáveis de ambiente estiverem configuradas no seu arquivo `.env` (ou nas configurações de ambiente da sua instância EC2/ECS Task Definition):
 
-Para monitoramento em produção, considere:
-- Configurar ELK (Elasticsearch, Logstash, Kibana) para análise de logs
-- Implementar métricas usando Prometheus + Grafana
-- Configurar alertas para erros frequentes
+- `ENVIRONMENT=production`
+- `LOG_GROUP_NAME`: Nome do grupo de logs no CloudWatch (ex: `BrowserUseAPILogs`)
+- `LOG_STREAM_NAME_API`: Nome do stream para logs principais da API (ex: `api-service-logs`)
+- `LOG_STREAM_NAME_DIAG`: Nome do stream para logs de diagnóstico do browser (ex: `browser-diag-logs`)
+
+**Permissões IAM:**
+A instância EC2 ou o Role da Task do ECS onde a API está rodando precisará das seguintes permissões IAM para enviar logs ao CloudWatch:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "CloudWatchLogsAccess",
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogStreams"
+            ],
+            "Resource": "arn:aws:logs:*:*:*"
+        }
+    ]
+}
+```
+
+### Configuração de Alertas para Falhas (AWS CloudWatch Alarms)
+
+É altamente recomendável configurar alarmes no CloudWatch para monitorar a saúde da sua aplicação e ser notificado sobre falhas. Exemplos de métricas para monitorar:
+
+1.  **Erros de Aplicação**: Crie filtros de métrica nos seus Log Groups do CloudWatch para contar ocorrências de erros (ex: palavras-chave como "ERROR", "Traceback", "Timeout"). Configure alarmes quando essa contagem exceder um limite aceitável.
+2.  **Uso de CPU e Memória da Instância EC2/ECS Task**: Configure alarmes para `CPUUtilization` e `MemoryUtilization` para detectar sobrecarga.
+3.  **Status do Health Check do Load Balancer**: Se estiver usando um Application Load Balancer (ALB), monitore a métrica `HealthyHostCount` e `UnHealthyHostCount`.
+4.  **Latência da API**: Monitore a latência das suas requisições através do ALB ou métricas customizadas.
+
+Consulte a [documentação da AWS sobre CloudWatch Alarms](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html) para criar e configurar alarmes.
+
+### Escalabilidade Horizontal (AWS)
+
+Para garantir que sua API possa lidar com variações de carga e manter alta disponibilidade, considere as seguintes estratégias de escalabilidade horizontal na AWS:
+
+1.  **Application Load Balancer (ALB)**: Distribua o tráfego de entrada entre múltiplas instâncias da sua API rodando em diferentes Zonas de Disponibilidade.
+2.  **Auto Scaling Group (ASG)**: Configure um ASG para suas instâncias EC2. O ASG pode automaticamente aumentar ou diminuir o número de instâncias com base em métricas como utilização de CPU, número de requisições, ou schedules definidos.
+3.  **Amazon ECS com Auto Scaling**: Se estiver usando ECS, configure o Service Auto Scaling para ajustar o número de tasks rodando com base em métricas como CPU e memória, ou métricas customizadas.
+
+O `docker-compose.yml` fornecido é adequado para um único host ou como base para uma definição de task no ECS. Para escalabilidade real, você precisará integrar com os serviços mencionados acima.
 
 ## Segurança
 
 - Use HTTPS para implantações em produção
 - Substitua a API_KEY por um valor forte e exclusivo (min 32 caracteres)
 - Mantenha ENVIRONMENT=production em ambientes de produção
-- Considere implementar rate limiting e monitoramento # browseruse_tests
+- Considere implementar rate limiting e monitoramento
+
+**Variáveis de Ambiente Críticas para Produção:**
+
+Certifique-se de que as seguintes variáveis estejam corretamente configuradas no seu arquivo `.env` (ou no sistema de gerenciamento de segredos da AWS) para o ambiente de produção:
+
+- `ENVIRONMENT=production`: Essencial para desabilitar chaves de teste e ativar comportamentos de produção (como logging para CloudWatch).
+- `API_KEY`: Uma chave de API forte e única. Gere usando `openssl rand -base64 32`.
+- `OPENAI_API_KEY`: Sua chave da API da OpenAI.
+- `LOG_GROUP_NAME`: (Opcional, mas recomendado para CloudWatch) Ex: `YourAppProductionLogs`.
+
+**Dependências e Playwright:**
+
+- **Versões de Dependências**: É uma boa prática fixar (pin) as versões das suas dependências no `requirements.txt` para garantir builds consistentes. A dependência `browser-use` e `playwright` devem ser testadas no ambiente de produção.
+- **Playwright no EC2**: O `Dockerfile` já inclui a instalação do Chromium e suas dependências, o que é adequado para execução em instâncias EC2. Certifique-se que a instância tem recursos suficientes (CPU/memória) conforme especificado no `docker-compose.yml` (mínimo 1G reservado, limite 2G, mas pode precisar de mais sob carga).
