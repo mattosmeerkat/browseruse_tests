@@ -4,3 +4,5 @@ Watchtower configurado para o logger principal. Grupo: BrowserUseAPILogs, Stream
 Watchtower configurado para o logger principal. Grupo: BrowserUseAPILogs, Stream: api-logs
 Watchtower configurado para o logger principal. Grupo: BrowserUseAPILogs, Stream: api-logs
 Watchtower configurado para o logger principal. Grupo: BrowserUseAPILogs, Stream: api-logs
+Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).
+Modo de desenvolvimento ativado. Chave de teste '123' habilitada.
