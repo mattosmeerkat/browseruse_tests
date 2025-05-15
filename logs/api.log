@@ -21,3 +21,7 @@ Acesso autorizado para usuário com role: admin
 Nova tarefa iniciada: task_d2f9335069408345 - URL: https://www.gov.br/cvm/pt-br/assuntos/noticias
 Executando agente para tarefa task_d2f9335069408345
 Tarefa task_d2f9335069408345 concluída em 209.08 segundos
+Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).
+Modo de desenvolvimento ativado. Chave de teste '123' habilitada.
+Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).
+Modo de desenvolvimento ativado. Chave de teste '123' habilitada.

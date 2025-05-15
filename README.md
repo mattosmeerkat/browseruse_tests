@@ -2,18 +2,24 @@
 
 API para execução de tarefas automatizadas de navegação web usando LLMs e browser automation.
 
-## Atualizações Recentes (Maio 2023)
+## Atualizações Recentes (Junho 2024)
 
+* **Suporte ao Headless Browser**: Adicionado suporte ao xvfb para execução do browser em ambiente sem interface gráfica
+* **Melhorias no Dockerfile**: Configuração otimizada para garantir que o Chromium funcione corretamente em containers
 * **Correção de caminhos**: Ajustado o Dockerfile e script de execução para lidar corretamente com a estrutura do módulo
 * **Melhorias no tratamento de resultados**: Adicionado manejo seguro de diferentes tipos de retorno do agente
 * **Atualização do Watchtower**: Atualizado para versão >=3.0.0 para compatibilidade com parâmetros de configuração
 * **Instalação otimizada de Playwright**: Configuração do Dockerfile para uso eficiente do Playwright/Chromium
 * **Segurança aprimorada**: Remoção de chaves API expostas das configurações de exemplo
-* **Implementação da dependência browser-use**: Adicionada simulação do pacote para demonstração e testes
+* **Implementação da dependência browser-use**: Compatibilidade com versões atuais do browser-use e suas dependências
 
 ## Nota sobre o pacote browser-use
 
-Este projeto depende do pacote `browser-use`, que é uma biblioteca personalizada para automação de navegadores com LLMs. Para um ambiente de produção completo, você deve:
+Este projeto depende do pacote `browser-use`, que é uma biblioteca para automação de navegadores com LLMs. O pacote é instalado automaticamente através do `requirements.txt`.
+
+O Docker utiliza xvfb para permitir que o Chromium seja executado em ambientes sem interface gráfica, como servidores na AWS.
+
+Para um ambiente de produção completo, você deve:
 
 1. **Em desenvolvimento local**: 
    - Clone o repositório do `browser-use` (se disponível publicamente)
@@ -37,8 +43,9 @@ Este projeto depende do pacote `browser-use`, que é uma biblioteca personalizad
 
 ## Requisitos
 
-- Python 3.8+
+- Python 3.11+
 - Docker e Docker Compose (para implantação em contêiner)
+- Em caso de execução local: Chromium ou Google Chrome instalado
 
 ## Configuração
 
@@ -126,16 +133,19 @@ Este guia oferece uma implantação mínima funcional, adequada para testes ou a
 
 2. **Implantação com Docker:**
    ```bash
-   # Construir e iniciar o container
-   docker-compose up -d
-   
+   # Construir a imagem
+   docker compose build
+
+   # Iniciar o serviço
+   docker compose up -d
+
    # Verificar logs
-   docker-compose logs -f
+   docker compose logs -f
    ```
 
 3. **Verificar a instalação:**
    ```bash
-   # Testar endpoint de saúde
+   # Verificar a saúde da API
    curl http://localhost:8000/health
    # Deve retornar: {"status":"ok","environment":"production"}
    ```
@@ -149,12 +159,52 @@ Este guia oferece uma implantação mínima funcional, adequada para testes ou a
      -d '{"url": "https://www.gov.br/cvm/pt-br/pagina-inicial/", "task": "Extraia o título da página principal", "model": "gpt-4.1"}'
    ```
 
+Se você encontrar problemas com a execução do browser, verifique os logs do container para mais informações:
+
+```bash
+docker compose logs -f
+```
+
 ## Implantação com Docker
 
 Para implantar usando Docker:
 
 ```bash
-docker-compose up -d
+# Construir a imagem
+docker compose build
+
+# Iniciar o serviço
+docker compose up -d
+
+# Verificar logs
+docker compose logs -f
+```
+
+O Dockerfile já está configurado com todas as dependências necessárias, incluindo:
+- Python 3.11 (recomendado para browser-use)
+- Playwright com Chromium
+- xvfb para execução headless do navegador
+- Todas as bibliotecas do sistema necessárias
+
+### Verificando se a instalação está funcionando
+
+Após iniciar o container, você pode verificar se a API está funcionando corretamente:
+
+```bash
+# Verificar a saúde da API
+curl http://localhost:8000/health
+
+# Executar uma tarefa simples (substitua API_KEY pelo valor do seu .env)
+curl -X POST http://localhost:8000/run_task \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sua-api-key" \
+  -d '{"url": "https://www.gov.br/cvm/pt-br/pagina-inicial/", "task": "Extraia o título da página principal", "model": "gpt-4.1"}'
+```
+
+Se você encontrar problemas com a execução do browser, verifique os logs do container para mais informações:
+
+```bash
+docker compose logs -f
 ```
 
 ## Exemplos de uso
@@ -276,16 +326,28 @@ python example_client.py --url "https://www.gov.br/cvm/pt-br/pagina-inicial/" \
 3. **Clonar e Configurar o Projeto**
    ```bash
    # Clonar o repositório
-   git clone [seu-repositorio] browseruse-api
-   cd browseruse-api
+   git clone https://github.com/mattosmeerkat/browseruse_tests.git browseruse_api
+   cd browseruse_api
 
    # Configurar o arquivo .env
-   cp example.env .env
+   # Crie o arquivo .env com as configurações básicas
+    cat > .env << 'EOF'
+    # API Keys
+    OPENAI_API_KEY=sua_chave_openai_aqui
+    API_KEY=chave_segura_para_autenticacao_da_api
 
-   # Gerar uma API_KEY forte para produção
-   API_KEY=$(openssl rand -base64 32)
-   echo "API_KEY=$API_KEY" >> .env
-   echo "ENVIRONMENT=production" >> .env
+    # Configurações de ambiente
+    ENVIRONMENT=production
+
+    # Configurações de fuso horário
+    TZ=America/Sao_Paulo
+
+    # Configurações de CloudWatch (opcional)
+    # AWS_ACCESS_KEY_ID=sua_chave_aws
+    # AWS_SECRET_ACCESS_KEY=sua_chave_secreta_aws
+    # AWS_DEFAULT_REGION=sa-east-1
+    # LOG_GROUP_NAME=BrowserUseAPILogs
+    EOF
 
    # Edite o arquivo .env para adicionar suas chaves de API
    nano .env
