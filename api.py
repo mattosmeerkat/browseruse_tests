@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Background
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
+from langchain_deepseek import ChatDeepSeek
 from browser_use import Agent
 import asyncio
 import os
@@ -119,7 +120,7 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)
 class BrowserTask(BaseModel):
     url: str
     task: str
-    model: Optional[str] = "gpt-4.1"
+    model: Optional[str] = "deepseek-reasoner"
     timeout: Optional[int] = 300
     additional_params: Optional[Dict[str, Any]] = None
     debug_mode: Optional[bool] = False
@@ -164,6 +165,41 @@ def log_detailed_info(task_id: str, message: str, level: str = "INFO", extra_dat
     else:
         diag_logger.info(json.dumps(log_entry))
 
+def get_llm_instance(model_name: str):
+    """
+    Retorna a instância correta do LLM baseado no nome do modelo.
+    Suporta tanto OpenAI quanto DeepSeek.
+    """
+    # Modelos DeepSeek
+    if any(keyword in model_name.lower() for keyword in ['deepseek', 'reasoner']):
+        deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not deepseek_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="DEEPSEEK_API_KEY not found in environment variables"
+            )
+        return ChatDeepSeek(
+            model=model_name,
+            temperature=0.7,
+            max_tokens=2048,
+            api_key=deepseek_api_key,
+        )
+    
+    # Modelos OpenAI (padrão)
+    else:
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="OPENAI_API_KEY not found in environment variables"
+            )
+        return ChatOpenAI(
+            model=model_name,
+            temperature=0.7,
+            max_tokens=2048,
+            api_key=openai_api_key,
+        )
+
 # Endpoints da API
 @app.post("/run_task", response_model=TaskResponse)
 async def run_task(task_request: BrowserTask, user_role: str = Depends(verify_api_key)):
@@ -199,7 +235,7 @@ async def run_task(task_request: BrowserTask, user_role: str = Depends(verify_ap
             # Criar e configurar o agente
             agent = Agent(
                 task=full_task,
-                llm=ChatOpenAI(model=task_request.model),
+                llm=get_llm_instance(task_request.model),
             )
             log_detailed_info(task_id, "Agente inicializado com sucesso", "DEBUG")
             
