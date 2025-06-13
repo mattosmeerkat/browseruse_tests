@@ -279,3 +279,44 @@ Configurando DeepSeek com modelo: deepseek-chat, API Base: https://api.deepseek.
 Executando agente para tarefa task_b44b8e959264dd69
 Tarefa task_b44b8e959264dd69 concluída em 126.26 segundos
 Tarefa task_b44b8e959264dd69 retornou resultado não-JSON: Extra data: line 3 column 1 (char 643)
+Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).
+Modo de desenvolvimento ativado. Chave de teste '123' habilitada.
+Acesso autorizado para usuário com role: admin
+Nova tarefa iniciada: task_3a4a7c07971de137 - URL: https://www.gov.br/cvm/pt-br/assuntos/noticias?form.submitted=1&texto=&dt_inicio=28%2F05%2F2025&dt_fim=28%2F05%2F2025&categoria=, Model: deepseek-chat, WaitTime: 5
+Inicializando modelo: deepseek-chat
+Configurando DeepSeek com modelo: deepseek-chat, API Base: https://api.deepseek.com
+Executando agente para tarefa task_3a4a7c07971de137
+Tarefa task_3a4a7c07971de137 concluída em 128.91 segundos
+Tarefa task_3a4a7c07971de137 retornou resultado não-JSON: Extra data: line 3 column 1 (char 641)
+Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).
+Modo de desenvolvimento ativado. Chave de teste '123' habilitada.
+Acesso autorizado para usuário com role: admin
+Nova tarefa iniciada: task_e945d480999fbc58 - URL: https://www.gov.br/cvm/pt-br/assuntos/noticias?form.submitted=1&texto=&dt_inicio=28%2F05%2F2025&dt_fim=28%2F05%2F2025&categoria=, Model: deepseek-chat, WaitTime: 5
+Inicializando modelo: deepseek-chat
+Configurando DeepSeek com modelo: deepseek-chat, API Base: https://api.deepseek.com
+Executando agente para tarefa task_e945d480999fbc58
+Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).
+Modo de desenvolvimento ativado. Chave de teste '123' habilitada.
+Acesso autorizado para usuário com role: admin
+Nova tarefa iniciada: task_5a74837d89a903be - URL: https://www.gov.br/cvm/pt-br/assuntos/noticias?form.submitted=1&texto=&dt_inicio=28%2F05%2F2025&dt_fim=28%2F05%2F2025&categoria=, Model: deepseek-chat, WaitTime: 5
+Inicializando modelo: deepseek-chat
+Configurando DeepSeek com modelo: deepseek-chat, API Base: https://api.deepseek.com
+Executando agente para tarefa task_5a74837d89a903be
+Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).
+Modo de desenvolvimento ativado. Chave de teste '123' habilitada.
+Acesso autorizado para usuário com role: admin
+Nova tarefa iniciada: task_26246d66dd29b22d - URL: https://www.gov.br/cvm/pt-br/assuntos/noticias?form.submitted=1&texto=&dt_inicio=28%2F05%2F2025&dt_fim=28%2F05%2F2025&categoria=, Model: deepseek-chat, WaitTime: 5
+Inicializando modelo: deepseek-chat
+Configurando DeepSeek com modelo: deepseek-chat, API Base: https://api.deepseek.com
+Executando agente para tarefa task_26246d66dd29b22d
+Tarefa task_26246d66dd29b22d concluída em 122.21 segundos
+Tarefa task_26246d66dd29b22d retornou resultado não-JSON: Expecting value: line 1 column 1 (char 0)
+Watchtower não configurado (não é ambiente de produção ou LOG_GROUP_NAME não definido).
+Modo de desenvolvimento ativado. Chave de teste '123' habilitada.
+Acesso autorizado para usuário com role: admin
+Nova tarefa iniciada: task_e568cd4f3a19ac2b - URL: https://www.gov.br/cvm/pt-br/assuntos/noticias?form.submitted=1&texto=&dt_inicio=28%2F05%2F2025&dt_fim=28%2F05%2F2025&categoria=, Model: deepseek-chat, WaitTime: 5
+Inicializando modelo: deepseek-chat
+Configurando DeepSeek com modelo: deepseek-chat, API Base: https://api.deepseek.com
+Executando agente para tarefa task_e568cd4f3a19ac2b
+Tarefa task_e568cd4f3a19ac2b concluída em 95.79 segundos
+Tarefa task_e568cd4f3a19ac2b retornou resultado não-JSON: Expecting value: line 1 column 1 (char 0)

@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_deepseek import ChatDeepSeek
-from browser_use import Agent
+from browser_use import Agent, Browser, BrowserConfig
 import asyncio
 import os
 import json
@@ -15,6 +15,7 @@ import sys
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Union
 from dotenv import load_dotenv
+import tempfile
 
 # Importar watchtower para CloudWatch logging
 import watchtower
@@ -290,20 +291,92 @@ INSTRUÇÕES TÉCNICAS PARA CARREGAMENTO DINÂMICO:
         final_result = "" # Initialize final_result
         result = None # Initialize result
 
+        browser = None
+        temp_dir = None
         try:
+            # CRIAR DIRETÓRIO TEMPORÁRIO ÚNICO para cada execução
+            import tempfile
+            temp_dir = tempfile.mkdtemp(prefix=f"browser_{task_id}_")
+            log_detailed_info(task_id, f"Diretório temporário criado: {temp_dir}", "DEBUG")
+            
+            # CONFIGURAÇÃO CRÍTICA: Browser totalmente isolado a cada execução
+            browser_config = BrowserConfig(
+                # Forçar headless para servidor
+                headless=True,
+                
+                # CRITICAL: Args anti-cache explícitos para isolamento total
+                extra_chromium_args=[
+                    '--no-first-run',
+                    '--no-default-browser-check',
+                    '--disable-default-apps',
+                    '--disable-extensions',
+                    '--disable-features=TranslateUI,VizDisplayCompositor',
+                    '--disable-web-security',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    
+                    # CACHE DESTRUCTION: Zero persistência entre execuções
+                    '--disk-cache-size=0',           # Zero cache de disco
+                    '--memory-cache-size=0',         # Zero cache de memória  
+                    '--disable-application-cache',   # Sem cache de aplicações
+                    '--disable-offline-load-stale-cache',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    
+                    # MODO INCÓGNITO FORÇADO: Sem dados persistentes
+                    '--incognito',
+                    f'--user-data-dir={temp_dir}',  # Dir temporário ÚNICO por execução
+                    '--data-reduction-proxy-bypass',
+                    '--disable-session-crashed-bubble',
+                    '--disable-infobars',
+                    '--disable-features=VizDisplayCompositor',
+                    
+                    # OTIMIZAÇÕES ADICIONAIS
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-ipc-flooding-protection',
+                ]
+            )
+            
+            # Criar browser isolado para esta execução
+            browser = Browser(config=browser_config)
+            log_detailed_info(task_id, "Browser isolado criado com configuração anti-cache", "DEBUG")
+            
+            # Criar agente com browser explícito e isolado
             agent = Agent(
                 task=full_task,
                 llm=get_llm_instance(task_request.model),
+                browser=browser  # Browser explícito e isolado para esta tarefa
             )
             log_detailed_info(task_id, "Agente inicializado com sucesso", "DEBUG")
             
             logger.info(f"Executando agente para tarefa {task_id}")
             log_detailed_info(task_id, "Iniciando execução do agente run()", "INFO")
             
-            result = await asyncio.wait_for(
-                agent.run(), 
-                timeout=task_request.timeout
-            )
+            # DEBUG: Log do timeout antes de usar
+            print(f"DEBUG: timeout = {task_request.timeout}, tipo = {type(task_request.timeout)}")
+            print(f"DEBUG: timeout é None? {task_request.timeout is None}")
+            print(f"DEBUG: timeout convertido para float: {float(task_request.timeout)}")
+            
+            # VERIFICAR SE O TIMEOUT É VÁLIDO
+            timeout_value = task_request.timeout
+            if timeout_value is None or timeout_value <= 0:
+                logger.warning(f"Timeout inválido detectado: {timeout_value}, usando padrão de 300")
+                timeout_value = 300
+            
+            # USAR TIMEOUT EXPLÍCITO
+            try:
+                result = await asyncio.wait_for(
+                    agent.run(), 
+                    timeout=float(timeout_value)
+                )
+            except asyncio.TimeoutError:
+                # CAPTURAR O TIMEOUT EXPLICITAMENTE
+                logger.error(f"TIMEOUT CAPTURADO - Tarefa {task_id} expirou após {timeout_value} segundos")
+                raise  # Re-raise para ser capturado pelo except externo
             
             execution_time = time.time() - start_time
             log_detailed_info(task_id, f"Execução do agente concluída em {execution_time:.2f} segundos", "INFO")
@@ -328,6 +401,19 @@ INSTRUÇÕES TÉCNICAS PARA CARREGAMENTO DINÂMICO:
             
             debug_info["execution_time"] = execution_time
             debug_info["end_time"] = datetime.now().isoformat()
+            
+            # Limpeza EXPLÍCITA do browser isolado
+            try:
+                if browser:
+                    await browser.close()
+                    log_detailed_info(task_id, "Browser isolado fechado com sucesso", "DEBUG")
+                # Limpar diretório temporário ÚNICO desta execução
+                if temp_dir and os.path.exists(temp_dir):
+                    import shutil
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    log_detailed_info(task_id, f"Diretório temporário {temp_dir} limpo", "DEBUG")
+            except Exception as cleanup_error:
+                log_detailed_info(task_id, f"Erro na limpeza do browser: {cleanup_error}", "WARNING")
             
             try:
                 if final_result:
@@ -365,6 +451,20 @@ INSTRUÇÕES TÉCNICAS PARA CARREGAMENTO DINÂMICO:
             log_detailed_info(task_id, f"Timeout após {task_request.timeout} segundos", "ERROR")
             debug_info["error"] = "TIMEOUT"
             debug_info["end_time"] = datetime.now().isoformat()
+            
+            # Limpeza EXPLÍCITA após timeout
+            try:
+                if browser:
+                    await browser.close()
+                    log_detailed_info(task_id, "Browser isolado fechado após timeout", "DEBUG")
+                # Limpar diretório temporário ÚNICO
+                if temp_dir and os.path.exists(temp_dir):
+                    import shutil
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    log_detailed_info(task_id, f"Diretório temporário {temp_dir} limpo após timeout", "DEBUG")
+            except Exception as cleanup_error:
+                log_detailed_info(task_id, f"Erro na limpeza após timeout: {cleanup_error}", "WARNING")
+            
             return TaskResponse(
                 task_id=task_id,
                 status="error",
@@ -380,6 +480,20 @@ INSTRUÇÕES TÉCNICAS PARA CARREGAMENTO DINÂMICO:
         debug_info["error"] = error_msg
         debug_info["traceback"] = trace
         debug_info["end_time"] = datetime.now().isoformat()
+        
+        # Limpeza EXPLÍCITA após erro
+        try:
+            if browser:
+                await browser.close()
+                log_detailed_info(task_id, "Browser isolado fechado após erro", "DEBUG")
+            # Limpar diretório temporário ÚNICO
+            if temp_dir and os.path.exists(temp_dir):
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                log_detailed_info(task_id, f"Diretório temporário {temp_dir} limpo após erro", "DEBUG")
+        except Exception as cleanup_error:
+            log_detailed_info(task_id, f"Erro na limpeza após exceção: {cleanup_error}", "WARNING")
+        
         return TaskResponse(
             task_id=task_id,
             status="error",
