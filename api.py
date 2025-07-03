@@ -2,7 +2,8 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Background
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
-from browser_use import Agent
+from langchain_deepseek import ChatDeepSeek
+from browser_use import Agent, Browser, BrowserConfig
 import asyncio
 import os
 import json
@@ -14,10 +15,13 @@ import sys
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Union
 from dotenv import load_dotenv
-load_dotenv()
+import tempfile
 
 # Importar watchtower para CloudWatch logging
 import watchtower
+
+# Carregar variáveis de ambiente com prioridade absoluta
+load_dotenv(override=True)
 
 # Configuração de logging avançada
 log_dir = "logs"
@@ -119,10 +123,11 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)
 class BrowserTask(BaseModel):
     url: str
     task: str
-    model: Optional[str] = "gpt-4.1"
+    model: Optional[str] = "deepseek-chat"
     timeout: Optional[int] = 300
     additional_params: Optional[Dict[str, Any]] = None
     debug_mode: Optional[bool] = False
+    additional_load_wait_time: Optional[int] = 5
 
 class TaskResponse(BaseModel):
     task_id: str
@@ -164,6 +169,68 @@ def log_detailed_info(task_id: str, message: str, level: str = "INFO", extra_dat
     else:
         diag_logger.info(json.dumps(log_entry))
 
+def get_llm_instance(model_name: str):
+    """
+    Retorna a instância correta do LLM baseado no nome do modelo.
+    Suporta tanto OpenAI quanto DeepSeek com carregamento dinâmico.
+    """
+    logger.info(f"Inicializando modelo: {model_name}")
+    
+    # Modelos DeepSeek - detecção mais precisa
+    if any(keyword in model_name.lower() for keyword in ['deepseek']):
+        deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not deepseek_api_key:
+            logger.error("DEEPSEEK_API_KEY não encontrada nas variáveis de ambiente")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="DEEPSEEK_API_KEY não encontrada nas variáveis de ambiente"
+            )
+        
+        logger.info(f"Configurando DeepSeek com modelo: {model_name}, API Base: https://api.deepseek.com")
+        logger.debug(f"DEEPSEEK_API_KEY disponível: {deepseek_api_key[:10]}...")
+        
+        try:
+            return ChatDeepSeek(
+                model=model_name,
+                temperature=0.7,
+                max_tokens=2048,
+                api_key=deepseek_api_key,
+                api_base="https://api.deepseek.com"
+            )
+        except Exception as e:
+            logger.error(f"Erro ao inicializar DeepSeek: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao inicializar modelo DeepSeek: {str(e)}"
+            )
+    
+    # Modelos OpenAI (padrão para outros modelos)
+    else:
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            logger.error("OPENAI_API_KEY não encontrada nas variáveis de ambiente")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="OPENAI_API_KEY não encontrada nas variáveis de ambiente"
+            )
+        
+        logger.info(f"Configurando OpenAI com modelo: {model_name}")
+        logger.debug(f"OPENAI_API_KEY disponível: {openai_api_key[:10]}...")
+        
+        try:
+            return ChatOpenAI(
+                model=model_name,
+                temperature=0.7,
+                max_tokens=2048,
+                api_key=openai_api_key,
+            )
+        except Exception as e:
+            logger.error(f"Erro ao inicializar OpenAI: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao inicializar modelo OpenAI: {str(e)}"
+            )
+
 # Endpoints da API
 @app.post("/run_task", response_model=TaskResponse)
 async def run_task(task_request: BrowserTask, user_role: str = Depends(verify_api_key)):
@@ -172,61 +239,153 @@ async def run_task(task_request: BrowserTask, user_role: str = Depends(verify_ap
     Requer autenticação via Bearer Token.
     """
     task_id = f"task_{secrets.token_hex(8)}"
-    logger.info(f"Nova tarefa iniciada: {task_id} - URL: {task_request.url}")
-    log_detailed_info(task_id, f"Iniciando tarefa com URL: {task_request.url}", "INFO", 
-                     {"task": task_request.task, "timeout": task_request.timeout})
+    original_debug_mode_flag = task_request.debug_mode
     
+    # Use o objeto task_request diretamente para os logs e debug_info para consistência
+    logger.info(f"Nova tarefa iniciada: {task_id} - URL: {task_request.url}, Model: {task_request.model}, WaitTime: {task_request.additional_load_wait_time}")
+    log_detailed_info(task_id, f"Iniciando tarefa com URL: {task_request.url}", "INFO", 
+                     {"task": task_request.task, 
+                      "timeout": task_request.timeout, 
+                      "additional_load_wait_time": task_request.additional_load_wait_time})
+    
+    # Construir debug_info explicitamente
+    task_details_for_debug = {
+        "url": task_request.url,
+        "model": task_request.model,
+        "timeout": task_request.timeout,
+        # Garantir que additional_load_wait_time esteja presente se não for None
+        "additional_load_wait_time": task_request.additional_load_wait_time 
+    }
+    # Adicionar additional_params apenas se existir e não for None
+    if task_request.additional_params is not None:
+        task_details_for_debug["additional_params"] = task_request.additional_params
+    # Adicionar debug_mode explicitamente (como booleano)
+    task_details_for_debug["debug_mode"] = original_debug_mode_flag
+
     debug_info = {
         "start_time": datetime.now().isoformat(),
-        "task_details": {
-            "url": task_request.url,
-            "model": task_request.model,
-            "timeout": task_request.timeout
-        },
+        "task_details": task_details_for_debug,
         "logs": []
     }
-    
+
     try:
-        # Inicializar o agente com os parâmetros recebidos
-        # Inclui a URL na task
-        full_task = f"Acesse {task_request.url}. {task_request.task}"
-        log_detailed_info(task_id, "Construindo o prompt para o agente", "DEBUG", {"full_task": full_task})
+        technical_instructions = ""
+        if task_request.additional_load_wait_time and task_request.additional_load_wait_time > 0:
+            technical_instructions = f"""
+
+INSTRUÇÕES TÉCNICAS PARA CARREGAMENTO DINÂMICO:
+1. Após carregar a página inicial, aguarde {task_request.additional_load_wait_time} segundos para que todo conteúdo dinâmico seja carregado
+2. Aguarde elementos aparecerem completamente antes de tentar interagir com eles
+3. Se necessário, aguarde que requisições AJAX/Fetch sejam concluídas
+4. Para sites com carregamento assíncrono, certifique-se de que todos os elementos estejam visíveis
+5. Use wait_for_selector ou wait_for_load_state quando apropriado
+6. Considere que o conteúdo pode ser populado via JavaScript após o carregamento inicial
+
+"""
+            log_detailed_info(task_id, f"Adicionando instruções técnicas para espera de {task_request.additional_load_wait_time} segundos", "DEBUG")
         
-        # Iniciar timer para medir desempenho
+        full_task = f"Acesse {task_request.url}.{technical_instructions}{task_request.task}"
+        log_detailed_info(task_id, "Construindo o prompt para o agente", "DEBUG", {"full_task": full_task[:500] + "..." if len(full_task) > 500 else full_task})
+        
         start_time = time.time()
-        
+        final_result = "" # Initialize final_result
+        result = None # Initialize result
+
+        browser = None
+        temp_dir = None
         try:
-            # Criar e configurar o agente
+            # CRIAR DIRETÓRIO TEMPORÁRIO ÚNICO para cada execução
+            import tempfile
+            temp_dir = tempfile.mkdtemp(prefix=f"browser_{task_id}_")
+            log_detailed_info(task_id, f"Diretório temporário criado: {temp_dir}", "DEBUG")
+            
+            # CONFIGURAÇÃO CRÍTICA: Browser totalmente isolado a cada execução
+            browser_config = BrowserConfig(
+                # Forçar headless para servidor
+                headless=True,
+                
+                # CRITICAL: Args anti-cache explícitos para isolamento total
+                extra_chromium_args=[
+                    '--no-first-run',
+                    '--no-default-browser-check',
+                    '--disable-default-apps',
+                    '--disable-extensions',
+                    '--disable-features=TranslateUI,VizDisplayCompositor',
+                    '--disable-web-security',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    
+                    # CACHE DESTRUCTION: Zero persistência entre execuções
+                    '--disk-cache-size=0',           # Zero cache de disco
+                    '--memory-cache-size=0',         # Zero cache de memória  
+                    '--disable-application-cache',   # Sem cache de aplicações
+                    '--disable-offline-load-stale-cache',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    
+                    # MODO INCÓGNITO FORÇADO: Sem dados persistentes
+                    '--incognito',
+                    f'--user-data-dir={temp_dir}',  # Dir temporário ÚNICO por execução
+                    '--data-reduction-proxy-bypass',
+                    '--disable-session-crashed-bubble',
+                    '--disable-infobars',
+                    '--disable-features=VizDisplayCompositor',
+                    
+                    # OTIMIZAÇÕES ADICIONAIS
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-ipc-flooding-protection',
+                ]
+            )
+            
+            # Criar browser isolado para esta execução
+            browser = Browser(config=browser_config)
+            log_detailed_info(task_id, "Browser isolado criado com configuração anti-cache", "DEBUG")
+            
+            # Criar agente com browser explícito e isolado
             agent = Agent(
                 task=full_task,
-                llm=ChatOpenAI(model=task_request.model),
+                llm=get_llm_instance(task_request.model),
+                browser=browser  # Browser explícito e isolado para esta tarefa
             )
             log_detailed_info(task_id, "Agente inicializado com sucesso", "DEBUG")
             
-            # Executar a tarefa
             logger.info(f"Executando agente para tarefa {task_id}")
             log_detailed_info(task_id, "Iniciando execução do agente run()", "INFO")
             
-            # Definir timeout customizado se fornecido
-            result = await asyncio.wait_for(
-                agent.run(), 
-                timeout=task_request.timeout
-            )
+            # DEBUG: Log do timeout antes de usar
+            print(f"DEBUG: timeout = {task_request.timeout}, tipo = {type(task_request.timeout)}")
+            print(f"DEBUG: timeout é None? {task_request.timeout is None}")
+            print(f"DEBUG: timeout convertido para float: {float(task_request.timeout)}")
+            
+            # VERIFICAR SE O TIMEOUT É VÁLIDO
+            timeout_value = task_request.timeout
+            if timeout_value is None or timeout_value <= 0:
+                logger.warning(f"Timeout inválido detectado: {timeout_value}, usando padrão de 300")
+                timeout_value = 300
+            
+            # USAR TIMEOUT EXPLÍCITO
+            try:
+                result = await asyncio.wait_for(
+                    agent.run(), 
+                    timeout=float(timeout_value)
+                )
+            except asyncio.TimeoutError:
+                # CAPTURAR O TIMEOUT EXPLICITAMENTE
+                logger.error(f"TIMEOUT CAPTURADO - Tarefa {task_id} expirou após {timeout_value} segundos")
+                raise  # Re-raise para ser capturado pelo except externo
             
             execution_time = time.time() - start_time
             log_detailed_info(task_id, f"Execução do agente concluída em {execution_time:.2f} segundos", "INFO")
             
-            # Obter resultado final
-            log_detailed_info(task_id, "Extraindo resultado final do agente", "DEBUG")
-            
-            # Tratamento seguro para diferentes tipos de retorno
-            final_result = ""
             if hasattr(result, "final_result"):
                 final_result = result.final_result()
             elif isinstance(result, str):
                 final_result = result
             else:
-                # Tentar converter para string caso seja outro tipo
                 try:
                     final_result = str(result)
                     log_detailed_info(task_id, "Resultado convertido para string", "WARNING")
@@ -234,92 +393,112 @@ async def run_task(task_request: BrowserTask, user_role: str = Depends(verify_ap
                     log_detailed_info(task_id, f"Erro ao converter resultado: {str(e)}", "ERROR")
             
             if final_result:
-                log_detailed_info(task_id, "Resultado final obtido", "DEBUG", 
-                                 {"result_size": len(final_result)})
+                log_detailed_info(task_id, "Resultado final obtido", "DEBUG", {"result_size": len(final_result)})
             else:
                 log_detailed_info(task_id, "Resultado final vazio", "WARNING")
             
             logger.info(f"Tarefa {task_id} concluída em {execution_time:.2f} segundos")
             
-            # Adicionar informações de timing ao debug
             debug_info["execution_time"] = execution_time
             debug_info["end_time"] = datetime.now().isoformat()
             
-            # Verificar se o resultado é JSON válido
+            # Limpeza EXPLÍCITA do browser isolado
+            try:
+                if browser:
+                    await browser.close()
+                    log_detailed_info(task_id, "Browser isolado fechado com sucesso", "DEBUG")
+                # Limpar diretório temporário ÚNICO desta execução
+                if temp_dir and os.path.exists(temp_dir):
+                    import shutil
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    log_detailed_info(task_id, f"Diretório temporário {temp_dir} limpo", "DEBUG")
+            except Exception as cleanup_error:
+                log_detailed_info(task_id, f"Erro na limpeza do browser: {cleanup_error}", "WARNING")
+            
             try:
                 if final_result:
-                    log_detailed_info(task_id, "Tentando parsear resultado como JSON", "DEBUG")
                     json_result = json.loads(final_result)
-                    log_detailed_info(task_id, "Parse JSON bem-sucedido", "DEBUG")
-                    
-                    # Lidar com diferentes formatos de resultado (objeto único ou array)
-                    if isinstance(json_result, list):
-                        log_detailed_info(task_id, f"Resultado é uma lista com {len(json_result)} itens", "DEBUG")
-                    else:
-                        log_detailed_info(task_id, "Resultado é um objeto único", "DEBUG")
-                    
                     return TaskResponse(
                         task_id=task_id,
                         result=json_result,
                         status="completed",
-                        debug_info=debug_info if task_request.debug_mode else None
+                        debug_info=debug_info if original_debug_mode_flag else None
                     )
                 else:
                     logger.warning(f"Tarefa {task_id} retornou resultado vazio")
-                    log_detailed_info(task_id, "Retornando resultado vazio", "WARNING")
-                    
                     return TaskResponse(
                         task_id=task_id,
                         status="completed",
                         result={},
                         error="Sem resultados retornados",
-                        debug_info=debug_info if task_request.debug_mode else None
+                        debug_info=debug_info if original_debug_mode_flag else None
                     )
             except json.JSONDecodeError as e:
-                # Se não for JSON válido, retornamos como texto
                 logger.warning(f"Tarefa {task_id} retornou resultado não-JSON: {str(e)}")
-                log_detailed_info(task_id, "Erro ao parsear JSON", "WARNING", {"error": str(e)})
-                
-                # Para depuração, tentamos mostrar o início do resultado
+                log_detailed_info(task_id, "Erro ao parsear JSON final", "WARNING", {"error": str(e), "raw_output": final_result[:1000] + ("..." if len(final_result) > 1000 else "") })
                 result_preview = final_result[:500] + "..." if len(final_result) > 500 else final_result
                 log_detailed_info(task_id, "Preview do resultado não-JSON", "DEBUG", {"preview": result_preview})
-                
+                # Modificado para retornar um array com o texto bruto, conforme solicitado
                 return TaskResponse(
                     task_id=task_id,
-                    result={"raw_text": final_result},
-                    status="completed",
-                    debug_info=debug_info if task_request.debug_mode else None
+                    result=[{"raw_text": final_result}], # Retorna array com o dado bruto
+                    status="completed_with_parsing_error", # Novo status para indicar o problema
+                    error="JSON parsing failed for final result, returning raw text.",
+                    debug_info=debug_info if original_debug_mode_flag else None
                 )
         except asyncio.TimeoutError:
             logger.error(f"Timeout na tarefa {task_id} após {task_request.timeout} segundos")
             log_detailed_info(task_id, f"Timeout após {task_request.timeout} segundos", "ERROR")
-            
             debug_info["error"] = "TIMEOUT"
             debug_info["end_time"] = datetime.now().isoformat()
+            
+            # Limpeza EXPLÍCITA após timeout
+            try:
+                if browser:
+                    await browser.close()
+                    log_detailed_info(task_id, "Browser isolado fechado após timeout", "DEBUG")
+                # Limpar diretório temporário ÚNICO
+                if temp_dir and os.path.exists(temp_dir):
+                    import shutil
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    log_detailed_info(task_id, f"Diretório temporário {temp_dir} limpo após timeout", "DEBUG")
+            except Exception as cleanup_error:
+                log_detailed_info(task_id, f"Erro na limpeza após timeout: {cleanup_error}", "WARNING")
             
             return TaskResponse(
                 task_id=task_id,
                 status="error",
                 error=f"Timeout após {task_request.timeout} segundos",
-                debug_info=debug_info if task_request.debug_mode else None
+                debug_info=debug_info if original_debug_mode_flag else None
             )
             
     except Exception as e:
-        # Captura detalhada de exceções
         error_msg = str(e)
         trace = traceback.format_exc()
         logger.error(f"Erro na tarefa {task_id}: {error_msg}", exc_info=True)
         log_detailed_info(task_id, f"Erro durante execução: {error_msg}", "ERROR", {"traceback": trace})
-        
         debug_info["error"] = error_msg
         debug_info["traceback"] = trace
         debug_info["end_time"] = datetime.now().isoformat()
+        
+        # Limpeza EXPLÍCITA após erro
+        try:
+            if browser:
+                await browser.close()
+                log_detailed_info(task_id, "Browser isolado fechado após erro", "DEBUG")
+            # Limpar diretório temporário ÚNICO
+            if temp_dir and os.path.exists(temp_dir):
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                log_detailed_info(task_id, f"Diretório temporário {temp_dir} limpo após erro", "DEBUG")
+        except Exception as cleanup_error:
+            log_detailed_info(task_id, f"Erro na limpeza após exceção: {cleanup_error}", "WARNING")
         
         return TaskResponse(
             task_id=task_id,
             status="error",
             error=error_msg,
-            debug_info=debug_info if task_request.debug_mode else None
+            debug_info=debug_info if original_debug_mode_flag else None
         )
 
 @app.post("/diagnose_browser", response_model=DiagnosticResponse)

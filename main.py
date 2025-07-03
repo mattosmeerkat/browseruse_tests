@@ -1,45 +1,69 @@
 from langchain_openai import ChatOpenAI
+from langchain_deepseek import ChatDeepSeek
 from browser_use import Agent
 import asyncio
 import json
+import os
 from dotenv import load_dotenv
 load_dotenv()
 
+def get_llm_instance(model_name: str = "deepseek-reasoner"):
+    """
+    Retorna a instância correta do LLM baseado no nome do modelo.
+    Suporta tanto OpenAI quanto DeepSeek.
+    """
+    # Modelos DeepSeek
+    if any(keyword in model_name.lower() for keyword in ['deepseek', 'reasoner']):
+        deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not deepseek_api_key:
+            raise ValueError("DEEPSEEK_API_KEY not found in environment variables")
+        return ChatDeepSeek(
+            model=model_name,
+            temperature=0.7,
+            max_tokens=2048,
+            api_key=deepseek_api_key,
+        )
+    
+    # Modelos OpenAI (padrão)
+    else:
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise ValueError("OPENAI_API_KEY not found in environment variables")
+        return ChatOpenAI(
+            model=model_name,
+            temperature=0.7,
+            max_tokens=2048,
+            api_key=openai_api_key,
+        )
+
 async def main():
     print('Iniciando o agente...')
+    
+    # Usar DeepSeek por padrão, mas permite alterar o modelo aqui
+    model_name = "deepseek-reasoner"  # Altere aqui para usar outro modelo
+    
     agent = Agent(
-        task="""Acesse https://www.gov.br/cvm/pt-br/pagina-inicial/, clique em 'Assuntos', depois em 'Notícias'.
-Leia as notícias do dia de ontem e para cada uma extraia os seguintes dados:
+        task="""Acesse https://www.amf-france.org/fr/actualites-publications/actualites and Action: Navigate directly to the news section of the website. You must actively browse through the news pages, including pagination if necessary, to find the last news article.
 
-1. Título da notícia
-2. Data e hora de publicação (extraindo dia da semana separadamente)
-3. Quem fez a notícia 
-4. Quem revisou a notícia
-5. Nome do regulador (normalmente CVM)
-6. Ementa ou resumo da notícia
-7. Conteúdo completo da notícia
-8. URL/link da notícia
+Copy the the URL from this last new from href.
 
-Formate as informações de cada notícia em JSON seguindo exatamente este modelo:
+The response must be a JSON formatted exactly as below, containing for each news item: Name, Date, and Link:
+
 {
-  "feito_por": "",
-  "revisado_por": "",
-  "data_publicacao": "",
-  "dia_semana": "",
-  "hora_publicacao": "",
-  "regulador": "CVM",
-  "titulo": "",
-  "ementa": "",
-  "conteudo_completo": "",
-  "link": ""
+ "news": [
+ {
+ "Date": "date of the news",
+ "Name": "title of the news",
+ "Link": "href of the news"
+ },
+ ...
+ ]
 }
 
-Se algum dos campos não estiver disponível, deixe-o vazio, mas inclua todos os campos.
-Retorne um JSON válido para cada notícia de hoje. Se houver mais de uma notícia, retorne um array de JSONs.
-""",
-        llm=ChatOpenAI(model="gpt-4.1"),
+Do not provide any additional text outside the JSON. Only return the JSON strictly in this format""",
+        llm=get_llm_instance(model_name),
     )
-    print('Executando agent.run()...')
+    print(f'Executando agent.run() com modelo: {model_name}...')
     result = await agent.run()
     print('Resultado do agent.run():')
     print(result)

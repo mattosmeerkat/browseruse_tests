@@ -27,9 +27,9 @@ def run_browser_task(url, task_description, api_url="http://localhost:8000", api
     payload = {
         "url": url,
         "task": task_description,
-        "model": "gpt-4.1",  # Pode ser alterado conforme necessário
-        "timeout": 300,       # Timeout em segundos
-        "additional_params": {}
+        "model": "deepseek-reasoner",  # Usando o modelo DeepSeek por padrão
+        "timeout": 300,
+        "debug_mode": True
     }
     
     # Configurar os headers

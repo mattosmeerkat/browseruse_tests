@@ -4,6 +4,7 @@ pydantic>=2.4.2
 python-dotenv>=1.0.0
 langchain~=0.3.0  # Trying a version potentially compatible with langchain-core==0.3.49
 langchain-core==0.3.49 # Pinned due to browser-use dependency
+langchain-deepseek>=0.0.1 # For DeepSeek integration
 langchain-openai>=0.0.2.post1 # Keep as is
 langchain-anthropic>=0.3.3 # Keep as is
 langchain-google-genai>=2.1.2 # Keep as is
